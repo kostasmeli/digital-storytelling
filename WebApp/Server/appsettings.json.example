@@ -1,0 +1,28 @@
+{
+  "AppSettings": {
+    "Token": "",
+    "Link": "",
+    "BranchName": "main",
+    "ProjectId": "46709685",
+    "RepoToken": "",
+    "sourceFolder": "F:\\TestinAzure\\blazordialogueapp",
+    "UnzipFolder": "F:\\TestinAzure\\UnzipFolder",
+    "BuildOutput": "F:\\TestinAzure\\BuildFolderV2",
+    "UnityExePath": "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.1f1\\Editor\\Unity.exe",
+    "UnityLog": "F:\\TestinAzure",
+    "GitLabName": "km13km13km13",
+    "AccessToken": ""
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "",
+    "LocalConnection": "User Id=postgres;Password=1q2w3e4r;Server=localhost;port=5432;Database=postgres"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}
+

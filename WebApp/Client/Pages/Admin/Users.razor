@@ -1,0 +1,117 @@
+﻿@page "/Users"
+@inject IUserService UserService 
+@inject ISessionService SessionService
+@inject ILocalStorageService LocalStorage
+@inject HttpClient httpclient
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager NavManager
+
+<AuthorizeView Roles="Admin">
+	<Authorized>
+		<PageTitle>Πληροφορίες Χρηστών</PageTitle>
+		<h3>Χρήστες</h3>
+		<table class="table">
+			<thead>
+				<tr>
+					<th>Όνομα χρήστη</th>
+					<th>Όνομα</th>
+					<th>Επώνυμο</th>
+					<th>Email</th>
+					<th>Ρόλος</th>
+					<th>Ενέργεια</th>
+				</tr>
+			</thead>
+			<tbody>
+				@foreach (var user in UserService.Users)
+				{
+					<tr>
+						<td>@user.Username</td>
+						<td>@user.FirstName</td>
+						<td>@user.LastName</td>
+						<td>@user.Email</td>
+						<td>@user.Role</td>
+						<td>
+							<button class="btn btn-primary" @onclick="(() => ShowUserSession(user.Username))"><i class="oi oi-magnifying-glass"></i></button>
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+		@if (UserSessions == null)
+		{
+			
+		}
+		else
+		{
+    <div class="card shadow p-3 mb-5 bg-white rounded">
+        <div class="card-body overflow-auto">
+			<table class="table">
+				<thead>
+					<tr>
+						<th>Όνομα χρήστη</th>
+						<th>Βαθμολογία</th>
+						<th>Μέγιστη Βαθμολογία</th>
+						<th>Διάλογος</th>
+						<th>Ημερομηνία</th>
+						<th>ID</th>
+					</tr>
+				</thead>
+				<tbody>
+					@foreach (var session in UserSessions)
+					{
+						<tr>
+							<td>@session.Username</td>
+							<td>@session.Score</td>
+							<td>@session.MaxScore</td>
+							<td>@session.DialogueTitle</td>
+							<td>@session.date</td>
+							<td>@session.id</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	</div>
+		}
+
+	</Authorized>
+	<NotAuthorized>
+		<h1>Δεν επιτρέπεται η πρόσβαση στην σελίδα.</h1>
+	</NotAuthorized>
+</AuthorizeView>
+
+
+
+@code {
+
+	List<DialogueSession> UserSessions;
+
+	protected override async Task OnInitializedAsync()
+	{
+		var token = await LocalStorage.GetItemAsStringAsync("token");
+		var jwt_validation = await httpclient.PostAsJsonAsync("api/Auth/ValidateJWT", $"{token}");
+		var jwt_validation_result = jwt_validation.Content.ReadAsStringAsync().Result;
+		if (jwt_validation_result == "Invalid")
+		{
+			await LocalStorage.RemoveItemAsync("token");
+			await AuthState.GetAuthenticationStateAsync();
+			NavManager.NavigateTo("/");
+		}
+		else
+		{
+			var authenticationState = await AuthState.GetAuthenticationStateAsync();
+			var User = authenticationState.User;
+			if (User.IsInRole("Admin"))
+			{
+				await UserService.GetUsers();
+				await SessionService.GetSessions();
+			}
+		}
+
+	}
+
+	private async Task ShowUserSession(string username)
+	{
+		UserSessions = await SessionService.GetUserSessions(username);
+	}
+}

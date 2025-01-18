@@ -1,0 +1,237 @@
+﻿@page "/CreateQuestion"
+@inject IQuestionService QuestionService;
+@inject NavigationManager NavManager;
+@inject AuthenticationStateProvider AuthState
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+<PageTitle>Δημιουργία Ερώτησης</PageTitle>
+<AuthorizeView Context="authcontext" Roles="Admin">
+    <Authorized>
+    <div class="container mt-3">
+        <div class="row justify-content-center">
+            <div class="col-lg-6 col-md-8 col-sm-10">
+                @if(DialogueObjects == null)
+                {
+                        
+                }
+                else
+                {
+                    <div class="mb-3">
+                        <select class="form-select" @onchange="HandleDialogueSelection">
+                            <option value="">Επέλεξε έναν απο τους διαθέσιμους Διαλόγους</option>
+                            @foreach (var dialogue in DialogueObjects)
+                            {
+                                <option value="@dialogue.Title">@dialogue.Title</option>
+                            }
+                        </select>
+                    </div>
+                    @if(selectedDialogue == null)
+                    {
+
+                    }
+                    else
+                    {
+                        <div class="shadow p-3 mb-5 bg-white rounded">
+                            <h2 class="mb-4 text-center">Υποβολή Ερώτησης</h2>
+                            <div class="mb-3">
+                                <label for="answers">Επέλεξε πλήθος απαντήσεων</label>
+                                <Select name="answers" class="form-select" @onchange="HandleNumberOfAnswerSelection">
+                                    <option value=2>2</option>
+                                    <option value=3>3</option>
+                                    <option value=4>4</option>
+                                    <option value=5>5</option>
+                                </Select>
+                            </div>
+                            @if (_question == null)
+                            {
+
+                            }
+                            else
+                            {
+                                <EditForm Model="_question" OnSubmit="HandleValidSubmit">
+                                    <div class="mb-3">
+                                        <div class="form-group">
+                                            <label for="questionText"><h4>Γράψε την Ερώτηση</h4></label>
+                                            <InputText id="questionText" class="form-control" @bind-Value="_question.Text" />
+                                        </div>
+                                    </div>
+                                    @{
+                                        int index = 0;
+                                    }
+                                    @foreach (var answer in _question.Answers)
+                                    {
+                                        index++;
+                                        <div class="mb-3">
+                                            <div class="form-group">
+                                                <label for="@index">Απάντηση @index</label>
+                                                <InputText class="form-control" type="text" id="@index" @bind-Value="answer.Text" />
+                                            </div>
+                                        </div>
+                                    }
+                                    <div class="mb-3">
+                                        <label for="CorrectAnswer"> Επέλεξε την σωστή απάντηση </label>
+                                        <InputSelect class="form-control" id="CorrectAnswer" @bind-Value="_question.CorrectAnswerId" required>
+                                            @for (int i = 0; i < _question.Answers.Count; i++)
+                                            {
+                                                int answerNumber = i + 1;
+                                                <option value="@(i+1)">@answerNumber</option>
+                                            }
+                                        </InputSelect>
+                                    </div>
+                                    <div class="text-center mb-3">
+                                        <button type="submit" class="btn btn-primary">Υποβολή</button>
+                                    </div>
+                                    <div class="alert alert-@alert_type alert-dismissible fade show" role="alert" style="display:@(IsVisible ? "block" : "none")">
+                                        <p class="card-text">@InfoText</p>
+                                        <button type="button" class="btn-close" data-dismiss="alert" aria-label="Close" @onclick=CloseAlert>
+                                            <span aria-hidden="true"></span>
+                                        </button>
+                                    </div>
+                                </EditForm>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+    </Authorized>
+    <NotAuthorized>
+        <h1>Δεν επιτρέπεται η πρόσβαση στην σελίδα.</h1>
+    </NotAuthorized>
+</AuthorizeView>
+
+
+
+@code {
+    private Question _question { get; set; }
+    private int SelectedNumberOfAnswers=2;
+
+    string InfoText = string.Empty;
+    bool IsVisible = false;
+    string alert_type = string.Empty;
+
+    private DialogueObject selectedDialogue;
+    private List<DialogueObject> DialogueObjects { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await LocalStorage.GetItemAsStringAsync("token");
+        var jwt_validation = await Http.PostAsJsonAsync("api/Auth/ValidateJWT", $"{token}");
+        var jwt_validation_result = jwt_validation.Content.ReadAsStringAsync().Result;
+        if (jwt_validation_result == "Invalid")
+        {
+            await LocalStorage.RemoveItemAsync("token");
+            await AuthState.GetAuthenticationStateAsync();
+            NavManager.NavigateTo("/");
+        }
+        else
+        {
+            var authenticationState = await AuthState.GetAuthenticationStateAsync();
+            var User = authenticationState.User;
+            if (User.IsInRole("Admin"))
+            {
+                await LoadDialogueObjects();
+                _question = new Question
+                    {
+                        Answers = GenerateAnswers(SelectedNumberOfAnswers),
+                        isActive = false // Set the isActive property accordingly
+                    };
+            }
+        }
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        try
+        {
+
+
+            //Add the Question on the SelectedDialogueObject
+            //Then Send it to controller
+            selectedDialogue.QuestionSet.Add(_question);
+
+            var response = await Http.PutAsJsonAsync($"api/DialogueObjects/{selectedDialogue.Title}", selectedDialogue);
+            if (response.IsSuccessStatusCode)
+            {
+                // Success message
+                InfoText = "Επιτυχής υποβολή ερώτησης!";
+                alert_type = "success";
+                IsVisible = true;
+                //Remove _question from the selectedDialogue QuestionSet
+                selectedDialogue.QuestionSet.Remove(_question);
+            }
+            else
+            {
+                // Error message
+                InfoText = "Αποτυχία υποβολής ερώτησης.";
+                alert_type = "danger";
+                IsVisible = true;
+                //Remove _question from the selectedDialogue QuestionSet
+                selectedDialogue.QuestionSet.Remove(_question);
+            }
+            _question = new Question
+                {
+                    Answers = GenerateAnswers(SelectedNumberOfAnswers),
+                    isActive = false // Set the isActive property accordingly
+                };
+        }
+        catch (Exception ex)
+        {
+            // Handle the exception, show an error message, etc.
+            Console.WriteLine(ex.Message);
+        }
+
+    }
+
+    private async Task LoadDialogueObjects()
+    {
+        try
+        {
+            DialogueObjects = await Http.GetFromJsonAsync<List<DialogueObject>>("api/DialogueObjects");
+        }
+        catch (Exception ex)
+        {
+            // Handle the exception, show an error message, etc.
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private void CloseAlert()
+    {
+        IsVisible = false;
+    }
+
+    private void HandleNumberOfAnswerSelection(ChangeEventArgs e)
+    {
+        int numberOfAnswers = int.Parse(e.Value.ToString());
+        SelectedNumberOfAnswers = numberOfAnswers; 
+        _question = new Question
+            {
+                Answers = GenerateAnswers(numberOfAnswers),
+                isActive = false // Set the isActive property accordingly
+            };
+
+    }
+
+    private List<Answer> GenerateAnswers(int numberOfAnswers)
+    {
+        List<Answer> answers = new List<Answer>();
+
+        for (int i = 0; i < numberOfAnswers; i++)
+        {
+            Answer answer = new Answer();
+
+            answers.Add(answer);
+        }
+
+        return answers;
+    }
+
+    private void HandleDialogueSelection(ChangeEventArgs e)
+    {
+        var selectedTitle = e.Value.ToString();
+        selectedDialogue = DialogueObjects.FirstOrDefault(d => d.Title == selectedTitle);
+    }
+
+}

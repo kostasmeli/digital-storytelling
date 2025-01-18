@@ -1,0 +1,223 @@
+﻿@page "/upload"
+@inject HttpClient httpClient
+@inject NavigationManager NavManager
+@inject AuthenticationStateProvider AuthState
+@inject ILocalStorageService LocalStorage
+
+<PageTitle>Ενημέρωση Διαλόγου</PageTitle>
+
+<AuthorizeView Roles="Admin">
+    <Authorized>
+
+    <div class="container mt-3">
+        <div class="row justify-content-center">
+            <div class="col-lg-6 col-md-8 col-sm-10">
+                @if(DialogueObjects == null)
+                {
+                        
+                }
+                else
+                {
+                    <div class="mb-3">
+                        <select class="form-select" @onchange="HandleDialogueSelection">
+                            <option value="">Επέλεξε έναν απο τους διαθέσιμους Διαλόγους</option>
+                            @foreach (var dialogue in DialogueObjects)
+                            {
+                                <option value="@dialogue.Title">@dialogue.Title</option>
+                            }
+                        </select>
+                    </div>
+                    @if(selectedDialogue == null)
+                    {
+
+                    }
+                    else
+                    {
+                        <div class="container mt-3">
+                            <div class="row justify-content-center">
+                                <div class="shadow p-3 mb-5 bg-white rounded">
+                                    <h2 class="mb-4 text-center">Ενημέρωση Διαλόγου</h2>
+                                    <h4 class="mb-2 text-center">@selectedDialogue.Title</h4>
+                                    <div class="mb-3">
+                                        <label for="textFileInput" class="form-label">Επέλεξε το αρχείο διαλόγου</label>
+                                        <InputFile class="form-control" id="textFileInput" accept=".yarn" OnChange="HandleTextFileSelected" />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="zipFileInput" class="form-label">Επέλεξε το zip αρχείο ήχων</label>
+                                        <InputFile class="form-control" id="zipFileInput" accept=".zip,.rar" OnChange="HandleZipFileSelected" />
+                                    </div>
+                                    <div class="text-center mb-3">
+                                        <button class="btn btn-primary upload-button" disabled="@(!textFileSelected || !zipFileSelected)" @onclick="UploadFiles">Υποβολή</button>
+                                    </div>
+                                    @if (string.IsNullOrEmpty(uploadStatus) & startedflag)
+                                    {
+                                        <div class="row">
+                                            <div class="text-center">
+                                                <div class="spinner-border" role="status">
+                                                    <span class="visually-hidden">Επεξεργασία...</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(uploadStatus))
+                                    {
+                                        <div class="alert alert-@alert_type alert-dismissible fade show" role="alert" style="display:@(IsVisible ? "block" : "none")">
+                                            <p class="card-text">@uploadStatus</p>
+                                            <button type="button" class="btn-close" data-dismiss="alert" aria-label="Close" @onclick=CloseAlert>
+                                                <span aria-hidden="true"></span>
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                             </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+    </Authorized>
+    <NotAuthorized>
+        <h1>Δεν επιτρέπεται η πρόσβαση</h1>
+    </NotAuthorized>
+</AuthorizeView>
+
+
+
+@code {
+    private string uploadStatus;
+    private IBrowserFile textFile;
+    private bool textFileSelected;
+    private IBrowserFile zipFile;
+    private bool zipFileSelected;
+    private bool startedflag = false;
+
+    string InfoText = string.Empty;
+    bool IsVisible = false;
+    string alert_type = string.Empty;
+
+    private DialogueObject selectedDialogue;
+    private List<DialogueObject> DialogueObjects { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await LocalStorage.GetItemAsStringAsync("token");
+        var jwt_validation = await httpClient.PostAsJsonAsync("api/Auth/ValidateJWT", $"{token}");
+        var jwt_validation_result = jwt_validation.Content.ReadAsStringAsync().Result;
+        if (jwt_validation_result == "Invalid")
+        {
+            await LocalStorage.RemoveItemAsync("token");
+            await AuthState.GetAuthenticationStateAsync();
+            NavManager.NavigateTo("/");
+        }
+        else
+        {
+            var authenticationState = await AuthState.GetAuthenticationStateAsync();
+            var User = authenticationState.User;
+            if (User.IsInRole("Admin"))
+            {
+                try
+                {
+                    DialogueObjects = await httpClient.GetFromJsonAsync<List<DialogueObject>>("api/DialogueObjects");
+                }
+                catch (Exception ex)
+                {
+                    // Handle the exception, show an error message, etc.
+                    Console.WriteLine(ex.Message);
+                }
+            }
+        }
+    }
+
+
+    private async Task HandleTextFileSelected(InputFileChangeEventArgs e)
+    {
+        textFile = e.File;
+        textFileSelected = true;
+    }
+
+    private async Task HandleZipFileSelected(InputFileChangeEventArgs e)
+    {
+        zipFile = e.File;
+        zipFileSelected = true;
+    }
+
+
+    private async Task UploadFiles()
+    {
+        if (textFile != null && zipFile != null)
+        {
+            startedflag = true;
+            var textFileContent = await ReadFileContentAsync(textFile);
+            var zipFileContent = await ReadFileContentAsync(zipFile);
+
+            var stringB64Text = System.Convert.ToBase64String(textFileContent);
+            var stringB64Zip = System.Convert.ToBase64String(zipFileContent);
+
+
+            uploadStatus = await UploadFiles(stringB64Text,stringB64Zip);
+
+        }
+    }
+    private async Task<byte[]> ReadFileContentAsync(IBrowserFile file)
+    {
+        using (var memoryStream = new MemoryStream())
+        {
+            await file.OpenReadStream(maxAllowedSize: 1024 * 1024 * 2000).CopyToAsync(memoryStream);
+            return memoryStream.ToArray();
+        }
+    }
+
+    private async Task<string> UploadFiles(string TextFileContent, string ZipFileContent)
+    {
+        try
+        {
+            //Set Timeout at 5 Minutes
+            httpClient.Timeout = TimeSpan.FromMinutes(5);
+            var request_body = new
+            {
+                Base64TextFile = TextFileContent,
+                Base64ZipFile = ZipFileContent,
+                Url = selectedDialogue.url,
+                Title = selectedDialogue.Title
+            };
+
+            var stringified_body = System.Text.Json.JsonSerializer.Serialize(request_body);
+
+            var string_content = new StringContent(stringified_body,System.Text.Encoding.UTF8,"application/json");
+
+            var response = await httpClient.PostAsync("api/Upload",string_content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                alert_type = "success";
+                IsVisible = true;
+                return "Επιτυχής Υποβολή";
+            }
+            else
+            {
+                alert_type = "danger";
+                IsVisible = true;
+                return "Σφάλμα κατά την υποβολή. Error message: " + await response.Content.ReadAsStringAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            alert_type = "danger";
+            IsVisible = true;
+            return "Σφάλμα κατά την υποβολή. Exception: " + ex.Message;
+        }
+    }
+
+    private void HandleDialogueSelection(ChangeEventArgs e)
+    {
+        var selectedTitle = e.Value.ToString();
+        selectedDialogue = DialogueObjects.FirstOrDefault(d => d.Title == selectedTitle);
+    }
+    private void CloseAlert()
+    {
+        IsVisible = false;
+    }
+
+
+}

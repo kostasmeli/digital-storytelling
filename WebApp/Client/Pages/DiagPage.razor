@@ -1,0 +1,268 @@
+﻿@page "/SelectDialogue"
+@inject HttpClient HttpClient
+@attribute [Authorize]
+@inject AuthenticationStateProvider AuthState
+@inject ISessionService SessionService
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavManager
+
+<PageTitle>Επιλογή Διαλόγου</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        @if (DialogueObjects == null)
+        {
+            <div class="text-center">
+                <p>Loading...</p>
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        }
+        else if (DialogueObjects.Count == 0)
+        {
+            <p>Δεν Βρέθηκαν Διαθέσιμοι Διάλογοι</p>
+        }
+        else
+        {
+            <div class="d-flex justify-content-center mb-3">
+                <div class="col-md-4">
+                    <select class="form-select" @onchange="HandleDialogueSelection">
+                        <option value="">Επέλεξε έναν Διάλογο</option>
+                        @foreach (var dialogue in DialogueObjects)
+                        {
+                            <option value="@dialogue.Title">@dialogue.Title</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            @if (selectedDialogue != null)
+            {
+
+                int qIndex = 0;
+                <div class="row">
+                    <div class="col">
+                        <h3>@selectedDialogue.Title</h3>
+                        <iframe src="@selectedDialogue.url" height="620" width="1080" title="DialogueGame"></iframe>
+                        <div>
+                            <div class="alert alert-@alert_type" role="alert" style="display:@(IsVisible ? "block" : "none")">
+                                <p class="card-text">@InfoText</p>
+                            </div>
+                            <div class="card" style="display:@(IsVisible ? "block" : "none")">
+                                <div class="card-header">Αποτελέσματα</div>
+                                <ul class="list-group list-group-flush">
+                                    @foreach (var kvp in QuestionsReview)
+                                    {
+                                        if (kvp.Value == "Λάθος Επιλογή")
+                                        {
+                                            <li class="list-group-item list-group-item-danger">@kvp.Key - @kvp.Value</li>
+                                        }
+                                        else
+                                        {
+                                            <li class="list-group-item list-group-item-success">@kvp.Key - @kvp.Value</li>
+                                        }
+                                    }
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card shadow p-3 mb-5 bg-white rounded">
+                            <div class="card-body overflow-auto">
+                                @foreach (var question in selectedDialogue.QuestionSet)
+                                {
+                                    <div class="card mb-3">
+                                        <div class="card-header">
+                                            <h4>@(qIndex + 1) - @question.Text</h4>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="form-check">
+                                                @{
+                                                    int choiceIndex = 0; quizScores.Add(0);
+                                                }
+                                                @foreach (var choice in question.Answers)
+                                                {
+                                                    int currentQuestionIndex = qIndex;
+                                                    string name = $"{question.Text}-{qIndex}";
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="radio" name="@qIndex" value="@choiceIndex" disabled=@user_submitted @onchange="@((eventArgs) => UpdateScore(Convert.ToInt32(eventArgs.Value), currentQuestionIndex))" />
+                                                        <label class="form-check-label" for="@choiceIndex">
+                                                            @choice.Text
+                                                        </label>
+                                                    </div>
+                                                    choiceIndex++;
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                    qIndex++;
+                                }
+                                <button @onclick="SubmitQuestions" class="btn btn-primary" disabled="@IsButtonDisabled">Υποβολή</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+
+        }
+    </Authorized>
+    <NotAuthorized>
+        <h1>Συνδέσου για να αποκτήσεις πρόσβαση </h1>
+    </NotAuthorized>
+</AuthorizeView>
+
+
+
+
+
+@code {
+    List<int> quizScores = new List<int>();
+    int currentScore = 0;
+    SortedList<int, string> QuestionsReview = new SortedList<int, string>();
+    public bool user_submitted { get; set; } = false;
+    private bool IsFormValid = true;
+    public bool IsButtonDisabled { get; set; } = true;
+
+    public string InfoText { get; set; } = string.Empty;
+    public string alert_type { get; set; } = string.Empty;
+    public bool IsVisible { get; set; } = false;
+
+    private DialogueObject selectedDialogue;
+
+    private List<DialogueObject> DialogueObjects { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+
+        var token = await LocalStorage.GetItemAsStringAsync("token");
+        var jwt_validation = await HttpClient.PostAsJsonAsync("api/Auth/ValidateJWT", token);
+        var jwt_validation_result = jwt_validation.Content.ReadAsStringAsync().Result;
+        if (jwt_validation_result == "Invalid")
+        {
+            await LocalStorage.RemoveItemAsync("token");
+            await AuthState.GetAuthenticationStateAsync();
+            NavManager.NavigateTo("/");
+        }
+        await LoadDialogueObjects();
+    }
+
+    private async Task LoadDialogueObjects()
+    {
+        try
+        {
+            DialogueObjects = await HttpClient.GetFromJsonAsync<List<DialogueObject>>("api/DialogueObjects/valid");
+        }
+        catch (Exception ex)
+        {
+            // Handle the exception, show an error message, etc.
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private void HandleDialogueSelection(ChangeEventArgs e)
+    {
+        var selectedTitle = e.Value.ToString();
+        selectedDialogue = new DialogueObject();
+        selectedDialogue = DialogueObjects.FirstOrDefault(d => d.Title == selectedTitle);
+
+        quizScores.Clear();
+        int currentScore = 0;
+        QuestionsReview = new SortedList<int, string>();
+        user_submitted = false;
+        IsFormValid = true;
+        IsButtonDisabled = true;
+        InfoText = string.Empty;
+        alert_type = string.Empty;
+        IsVisible = false;
+
+    }
+
+    private void ValidateForm()
+    {
+        IsFormValid = quizScores.All(score => score > -1);
+        IsButtonDisabled = !IsFormValid;
+    }
+
+    void UpdateScore(int chosenAnswerIndex, int QuestionIndex)
+    {
+
+        var question = selectedDialogue.QuestionSet[QuestionIndex]; // We assign the Question object given the provided Index
+
+        if (chosenAnswerIndex == (question.CorrectAnswerId - 1)) //CorrectAnswerId StartFrom 1 , thus the -1
+        {
+
+            //Test quizScores .Inster(QuestionIndex,1)
+            quizScores[QuestionIndex] = 1; //if selected Answer is Correct , We add 1 to the List Indexing the Question
+            if (QuestionsReview.ContainsKey(QuestionIndex + 1))
+            {
+                QuestionsReview[QuestionIndex + 1] = "Σωστή Επιλογή";
+            }
+            else
+            {
+                QuestionsReview.Add(QuestionIndex + 1, "Σωστή Επιλογή");
+            }
+
+            //QuestionSummary.Add(QuestionIndex+1, "Σωστή Επιλογή");
+        }
+        else
+        {
+            quizScores[QuestionIndex] = 0;
+            if (QuestionsReview.ContainsKey(QuestionIndex + 1))
+            {
+                QuestionsReview[QuestionIndex + 1] = "Λάθος Επιλογή";
+            }
+            else
+            {
+                QuestionsReview.Add(QuestionIndex + 1, "Λάθος Επιλογή");
+            }
+            //QuestionSummary.Add(QuestionIndex+1, "Λάθος Επιλογή");
+        }
+        currentScore = quizScores.Sum();
+        if (!user_submitted)
+        {
+            ValidateForm();
+        }
+
+    }
+
+    async Task SubmitQuestions()
+    {
+
+        var authstate = await AuthState.GetAuthenticationStateAsync();
+        if (!IsFormValid)
+        {
+            // Show an error message to the user, indicating that all questions must be answered.
+            return;
+        }
+        int max_score = selectedDialogue.QuestionSet.Count();
+
+        var result = await SessionService.CreateSession(currentScore, authstate.User.Identity.Name, selectedDialogue.Title, max_score);
+
+        if (result != null)
+        {
+            InfoText = "Τελική Βαθμολογία : " + currentScore + "/" + selectedDialogue.QuestionSet.Count;
+            alert_type = "alert alert-success";
+            ShowInfoBox();
+            //await JS.InvokeVoidAsync("alert", "Επιτυχής Υποβολή");
+            IsButtonDisabled = true;
+            user_submitted = true;
+            StateHasChanged();
+        }
+        else
+        {
+            InfoText = "Κάτι πήγε λάθος";
+            alert_type = "alert alert-danger";
+            ShowInfoBox();
+            //await JS.InvokeVoidAsync("alert", "Κάτι πήγε λάθος !");
+            return;
+        }
+
+    }
+
+    private void ShowInfoBox()
+    {
+        IsVisible = true;
+    }
+
+}

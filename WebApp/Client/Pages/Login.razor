@@ -1,0 +1,96 @@
+﻿@page "/Login"
+@using BlazorApp.Shared.DTO
+@inject IJSRuntime js
+@inject HttpClient httpClient
+@inject NavigationManager NavManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ILocalStorageService LocalStorage
+
+<PageTitle>Σύνδεση</PageTitle>
+
+<AuthorizeView Context="authContext">
+    <NotAuthorized>
+        <div class="container mt-3">
+            <div class="row justify-content-center">
+                <div class="col-lg-6 col-md-8 col-sm-10">
+                    <div class="shadow p-3 mb-5 bg-white rounded">
+                        <h2 class="mb-4 text-center">Σύνδεση</h2>
+                        <EditForm Model="@_user" OnValidSubmit="HandleSubmit">
+                            <DataAnnotationsValidator />
+                            <div class="mb-3">
+                                <InputText type="text" @bind-Value="_user.Username" class="form-control" placeholder="Όνομα χρήστη" />
+                                <ValidationMessage For="@(() => _user.Username)" />
+                            </div>
+                            <div class="mb-3">
+                                <div class="input-group">
+                                    <InputText @bind-Value="_user.Password" type="@passwordInputType" class="form-control" placeholder="Κωδικός" />
+                                    <div class="input-group-append">
+                                        <button type="button" class="btn btn-outline-secondary shadow-none" @onclick="TogglePasswordVisibility">
+                                            <span class="oi oi-eye"></span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <ValidationMessage For="@(() => _user.Password)" />
+                            </div>
+                            @if (errormsg)
+                            {
+                             <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                Λάθος Όνομα χρήστη/Κωδικός
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" @onclick="(()=>errormsg=false)">
+                                        <span aria-hidden="true"></span>
+                                </button>
+                            </div>
+                            }
+                            <div class="text-center">
+                                <button type="submit" class="btn btn-primary">Σύνδεση</button>
+                            </div>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </NotAuthorized>
+    <Authorized>
+        <h1>Είσαι ήδη συνδεδεμένος</h1>
+    </Authorized>
+</AuthorizeView>
+
+
+@code {
+    private bool errormsg=false;
+    private bool showPassword = false;
+    private string passwordInputType = "password";
+    private void TogglePasswordVisibility()
+    {
+        showPassword = !showPassword;
+        passwordInputType = showPassword ? "text" : "password";
+    }
+
+    UserLogin _user = new UserLogin();
+
+    async Task HandleSubmit()
+    {
+        var loginResponse = await httpClient.PostAsJsonAsync("/api/Auth", _user);
+        if(loginResponse.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            errormsg = true;
+            return;
+        }
+        else if (loginResponse.IsSuccessStatusCode)
+        {
+            var token = await loginResponse.Content.ReadAsStringAsync();
+            Console.WriteLine(token);
+            await LocalStorage.SetItemAsync("token", token);
+            await AuthStateProvider.GetAuthenticationStateAsync();
+            NavManager.NavigateTo("/");
+        }
+        else
+        {
+            // handle other error cases
+            await js.InvokeVoidAsync("alert", "Κάτι πήγε λάθος !");
+            return;
+        }
+
+    }
+
+}

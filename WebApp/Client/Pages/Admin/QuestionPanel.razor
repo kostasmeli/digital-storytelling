@@ -1,0 +1,204 @@
+﻿@page "/QuestionPanel"
+@inject HttpClient httpclient
+@inject NavigationManager NavManager
+@inject IJSRuntime js
+@inject IQuestionService ServiceQuestion
+@inject ILocalStorageService LocalStorage
+@inject AuthenticationStateProvider AuthState
+<PageTitle>Πάνελ Ερωτήσεων</PageTitle>
+<AuthorizeView Roles="Admin">
+    <Authorized>
+        <h3>Πάνελ Ερωτήσεων</h3>
+        @if (DialogueObjects == null)
+        {
+
+        }
+        else
+        {
+            <div class="d-flex justify-content-center mb-3">
+                <div class="col-md-6">
+                    <select class="form-select" @onchange="HandleDialogueSelection">
+                        <option value="">Επέλεξε έναν απο τους διαθέσιμους Διαλόγους</option>
+                        @foreach (var dialogue in DialogueObjects)
+                        {
+                            <option value="@dialogue.Title">@dialogue.Title</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            @if (selectedDialogue == null)
+            {
+
+            }
+            else
+            {
+                <div class="d-flex justify-content-center mb-2">
+                    <div class="col">
+                        <button class="btn btn-success" @onclick="(()=> UpdateHandler(selectedDialogue))">Αποθήκευση</button>
+                    </div>
+                    <div class="col">
+                        <div class="alert alert-@alert_type alert-dismissible fade show" role="alert" style="display:@(IsVisible ? "block" : "none")">
+                            <p class="card-text">@InfoText</p>
+                            <button type="button" class="btn-close" data-dismiss="alert" aria-label="Close" @onclick=CloseAlert>
+                                <span aria-hidden="true"></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Ερώτηση</th>
+                            <th>Απαντήσεις</th>
+                            <th>Σωστή Απάντηση</th>
+                            <th>Ενεργοποίηση</th>
+                            <th>Ενέργειες</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{
+                            int qIndex = 0;
+                        }
+                        @foreach (var question in selectedDialogue.QuestionSet)
+                        {
+                            qIndex++;
+                            <tr>
+                                <td>@qIndex</td>
+                                <td>@question.Text</td>
+                                <td>
+                                    <table class="table table-borderless  mb-0">
+                                        @{
+                                            int index = 0;
+                                        }
+                                        <tbody>
+                                            @foreach (var answer in question.Answers)
+                                            {
+                                                index++;
+                                                <tr>
+                                                    <td>@index</td>
+                                                    <td>@answer.Text</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </td>
+                                <td>@question.CorrectAnswerId</td>
+                                <td>
+                                    <div class="form-check">
+                                        <InputCheckbox class="form-check-input" type="checkbox" @bind-Value="@question.isActive" @onchange="() =>ToggleCheckbox(question)" id="Active" />
+                                    </div>
+                                </td>
+                                <td>
+                                    <button class="btn btn-primary" @onclick="(()=> EditHandler(question.Id))"><i class="oi oi-pencil"></i></button>
+                                    <button class="btn btn-danger" @onclick="(()=>  DeleteHandler(question.Id))"><i class="oi oi-trash"></i></button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+
+    </Authorized>
+    <NotAuthorized>
+        <h1>Δεν επιτρέπεται η πρόσβαση</h1>
+    </NotAuthorized>
+</AuthorizeView>
+
+
+@code {
+    private List<DialogueObject> DialogueObjects { get; set; }
+    private DialogueObject selectedDialogue;
+
+    private bool updated = false;
+    public string InfoText { get; set; } = string.Empty;
+    public string alert_type { get; set; } = string.Empty;
+    public bool IsVisible { get; set; } = false;
+
+    List<Question> _Questions = new List<Question>();
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await LocalStorage.GetItemAsStringAsync("token");
+        var jwt_validation = await httpclient.PostAsJsonAsync("api/Auth/ValidateJWT", $"{token}");
+        var jwt_validation_result = jwt_validation.Content.ReadAsStringAsync().Result;
+        if (jwt_validation_result == "Invalid")
+        {
+            await LocalStorage.RemoveItemAsync("token");
+            await AuthState.GetAuthenticationStateAsync();
+            NavManager.NavigateTo("/");
+        }
+        else
+        {
+            var authenticationState = await AuthState.GetAuthenticationStateAsync();
+            var User = authenticationState.User;
+            if (User.IsInRole("Admin"))
+            {
+                //await servicequestion.getquestions();
+                //_questions = servicequestion.questions;
+                try
+                {
+                    DialogueObjects = await httpclient.GetFromJsonAsync<List<DialogueObject>>("api/DialogueObjects");
+                }
+                catch (Exception ex)
+                {
+                    // Handle the exception, show an error message, etc.
+                    Console.WriteLine(ex.Message);
+                }
+            }
+
+        }
+
+    }
+
+    private void EditHandler(int id)
+    {
+        NavManager.NavigateTo($"/EditQuestion/{id}");
+    }
+    private async Task DeleteHandler(int id)
+    {
+
+        //await httpclient.DeleteFromJsonAsync<List<Question>>($"api/Question/{id}");
+        await ServiceQuestion.DeleteQuestion(id);
+        selectedDialogue.QuestionSet.Remove(selectedDialogue.QuestionSet.FirstOrDefault(q => q.Id == id));
+        //_Questions = ServiceQuestion.questions;
+        alert_type = "warning";
+        InfoText = "Επιτυχής Διαγραφή";
+        IsVisible = true;
+
+
+    }
+
+    private async Task UpdateHandler(DialogueObject obj)
+    {
+        var response = await httpclient.PutAsJsonAsync($"api/DialogueObjects/{obj.Title}", obj);
+        if (response.IsSuccessStatusCode)
+        {
+            alert_type = "success";
+            InfoText = "Επιτυχής Ενημέρωση";
+            IsVisible = true;
+        }
+        else
+        {
+            alert_type = "danger";
+            InfoText = "Αποτυχία Ενημέρωσης";
+            IsVisible = true;
+        }
+
+    }
+    private void ToggleCheckbox(Question question)
+    {
+        question.isActive = !question.isActive;
+    }
+
+    private void HandleDialogueSelection(ChangeEventArgs e)
+    {
+        var selectedTitle = e.Value.ToString();
+        selectedDialogue = DialogueObjects.FirstOrDefault(d => d.Title == selectedTitle);
+    }
+    private void CloseAlert()
+    {
+        IsVisible = false;
+    }
+
+}

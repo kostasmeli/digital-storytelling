@@ -1,0 +1,39 @@
+﻿@page "/"
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager NavManager
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+<PageTitle>Αρχική Σελίδα</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <h3>Καλώς ήρθες, @context.User.Identity.Name !</h3>
+    </Authorized>
+    <NotAuthorized>
+        <h1>Συνδέσου για να αποκτήσεις πρόσβαση στον διαδραστικό διάλογο.</h1>
+    </NotAuthorized>
+</AuthorizeView>
+
+
+
+
+@code{
+
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await LocalStorage.GetItemAsStringAsync("token");
+        var jwt_validation = await Http.PostAsJsonAsync("api/Auth/ValidateJWT", token);
+        var jwt_validation_result = jwt_validation.Content.ReadAsStringAsync().Result;
+        if (jwt_validation_result == "Invalid")
+        {
+            await LocalStorage.RemoveItemAsync("token");
+            await AuthState.GetAuthenticationStateAsync();
+            NavManager.NavigateTo("/");
+        }
+        else
+        {
+            
+        }
+
+    }
+}

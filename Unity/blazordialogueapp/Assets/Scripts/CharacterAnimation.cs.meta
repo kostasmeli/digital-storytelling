@@ -1,0 +1,13 @@
+fileFormatVersion: 2
+guid: bd7c22c90035fcb46a452eba5324d7fb
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - TalkAnimation: {instanceID: 0}
+  - AdeimantosMouth: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

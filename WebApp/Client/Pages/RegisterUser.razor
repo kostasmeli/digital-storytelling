@@ -1,0 +1,92 @@
+﻿@page "/Register"
+@inject IUserService UserService;
+@inject NavigationManager NavManager;
+@inject IJSRuntime js
+
+<PageTitle>Εγγραφή</PageTitle>
+
+<div class="container mt-3">
+    <div class="row justify-content-center">
+        <div class="col-lg-6 col-md-8 col-sm-10">
+            <div class="shadow p-3 mb-5 bg-white rounded">
+                <h2 class="mb-4 text-center">Εγγραφή</h2>
+    <EditForm Model="@_user" OnValidSubmit="HandleSubmit">
+     <DataAnnotationsValidator />
+        <div class="row mb-3">
+            <div class="col">
+            <InputText type="text" @bind-Value="@_user.FirstName" class="form-control" placeholder="Όνομα"/>
+            <ValidationMessage For="@(() => _user.FirstName)" />
+            </div>
+             <div class="col">
+            <InputText type="text" @bind-Value="@_user.LastName" class="form-control" placeholder="Επώνυμο"/>
+            <ValidationMessage For="@(() => _user.LastName)" />
+            </div>
+        </div>
+        <div class="mb-3">
+            <InputText type="email" @bind-Value="_user.Email" class="form-control" placeholder="Email" />
+            <ValidationMessage For="@(() => _user.Email)" />
+        </div>
+        <div class="mb-3">
+            <InputText type="text" @bind-Value="_user.Username" class="form-control" placeholder="Όνομα χρήστη" />
+            <ValidationMessage For="@(() => _user.Username)" />
+        </div>
+        <div class="mb-3">
+            <div class="input-group">
+                <InputText @bind-Value="_user.Password" type="@passwordInputType" class="form-control" placeholder="Κωδικός"/>
+                <div class="input-group-append">
+                    <button type="button" class="btn btn-outline-secondary shadow-none" @onclick="TogglePasswordVisibility">
+                        <span class="oi oi-eye"></span>
+                    </button>
+                </div>
+            </div>
+            <ValidationMessage For="@(() => _user.Password)" />
+        </div>
+        @if (errormsg)
+        {
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                Το συγκεκριμένο Όνομα χρήστη ήδη χρησιμοποιείται
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" @onclick="(()=>errormsg=false)">
+                    <span aria-hidden="true"></span>
+                </button>
+            </div>
+        }
+        <div class="text-center">
+            <button type="submit" class="btn btn-primary">Εγγραφή</button>
+        </div>
+    </EditForm>
+    </div>
+  </div>
+ </div>
+</div>
+
+
+@code {
+    private bool errormsg = false;
+    private bool isRegistered=false;
+    private bool showPassword = false;
+    private string passwordInputType = "password";
+
+    User _user = new User();
+
+    private void TogglePasswordVisibility()
+    {
+        showPassword = !showPassword;
+        passwordInputType = showPassword ? "text" : "password";
+    }
+
+    async Task HandleSubmit()
+    {
+
+        var result = await UserService.CreateUser(_user);
+
+        if (result == null)
+        {
+            errormsg = true;
+            return;
+        }
+
+        _user = new User();
+
+        NavManager.NavigateTo("/login");
+    }
+}
